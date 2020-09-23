@@ -6,6 +6,11 @@
 #include "proc.h"
 #include "x86.h"
 #include "syscall.h"
+#include "date.h"
+#include "stat.h"
+
+// Comment out line below to toggle off system call tracing.
+#define TRACE_SYSCALL
 
 // User code makes a system call with INT T_SYSCALL.
 // System call number in %eax.
@@ -60,7 +65,7 @@ argptr(int n, char **pp, int size)
 {
   int i;
   struct proc *curproc = myproc();
- 
+
   if(argint(n, &i) < 0)
     return -1;
   if(size < 0 || (uint)i >= curproc->sz || (uint)i+size > curproc->sz)
@@ -103,6 +108,7 @@ extern int sys_unlink(void);
 extern int sys_wait(void);
 extern int sys_write(void);
 extern int sys_uptime(void);
+extern int sys_date(void);
 
 static int (*syscalls[])(void) = {
 [SYS_fork]    sys_fork,
@@ -126,6 +132,7 @@ static int (*syscalls[])(void) = {
 [SYS_link]    sys_link,
 [SYS_mkdir]   sys_mkdir,
 [SYS_close]   sys_close,
+[SYS_date]    sys_date,
 };
 
 void
@@ -136,7 +143,113 @@ syscall(void)
 
   num = curproc->tf->eax;
   if(num > 0 && num < NELEM(syscalls) && syscalls[num]) {
+    // curproc->tf->eax records return value of syscall
     curproc->tf->eax = syscalls[num]();
+
+    #ifdef TRACE_SYSCALL
+    int n[2];
+    char *p[2];
+    struct stat *st;
+    struct rtcdate *r;
+
+    // use switch statement to specify what to do for each variable
+    switch (num) {
+      case SYS_fork:
+        cprintf("fork -> %d\n", curproc->tf->eax);
+        break;
+      case SYS_exit:
+        cprintf("exit -> %d\n", curproc->tf->eax);
+        break;
+      case SYS_wait:
+        cprintf("wait -> %d\n", curproc->tf->eax);
+        break;
+      case SYS_pipe:
+        argint(0, &n[0]);
+        cprintf("pipe -> %d\t(%d)\n", curproc->tf->eax, n[0]);
+        break;
+      case SYS_read:
+        argint(0, &n[0]);
+        argint(2, &n[1]);
+        argptr(1, &p[0], n[1]);
+        cprintf("read -> %d\t(%d, %s, %d)\n", curproc->tf->eax, n[0], p[0], n[1]);
+        break;
+      case SYS_kill:
+        argint(0, &n[0]);
+        cprintf("kill -> %d\t(%d)\n", curproc->tf->eax, n[0]);
+        break;
+      case SYS_exec:
+        // path printed in sys_exec function of sysfile.c
+        argint(1, &n[0]);
+        // print return value of exec and address of argv
+        cprintf("exec -> %d (%p)\n", curproc->tf->eax, n[0]);
+        break;
+      case SYS_fstat:
+        argint(0, &n[0]);
+        argptr(1, (void*)&st, sizeof(*st));
+        cprintf("fstat -> %d\t(%d, %p)\n", curproc->tf->eax, n[0], st);
+        break;
+      case SYS_chdir:
+        argstr(0, &p[0]);
+        cprintf("chdir -> %d\t(%s)\n", curproc->tf->eax, p[0]);
+        break;
+      case SYS_dup:
+        argint(0, &n[0]);
+        cprintf("dup -> %d\t(%d)\n", curproc->tf->eax, n[0]);
+        break;
+      case SYS_getpid:
+        cprintf("getpid -> %d\n", curproc->tf->eax);
+        break;
+      case SYS_sbrk:
+        argint(0, &n[0]);
+        cprintf("sbrk -> %p\t(%d)\n", curproc->tf->eax, n[0]);
+        break;
+      case SYS_sleep:
+        argint(0, &n[0]);
+        cprintf("sleep -> %d\t(%d)\n", curproc->tf->eax, n[0]);
+        break;
+      case SYS_uptime:
+        cprintf("uptime -> %d\n", curproc->tf->eax);
+        break;
+      case SYS_open:
+        argstr(0, &p[0]);
+        argint(1, &n[0]);
+        cprintf("open -> %d\t(%s, %d)\n", curproc->tf->eax, p[0], n[0]);
+        break;
+      case SYS_write:
+        argint(0, &n[0]);
+        argint(2, &n[1]);
+        argptr(1, &p[0], n[1]);
+        cprintf("write -> %d\t(%d, %s, %d)\n", curproc->tf->eax, n[0], p[0], n[1]);
+        break;
+      case SYS_mknod:
+        argstr(0, &p[0]);
+        argint(1, &n[0]);
+        argint(1, &n[1]);
+        cprintf("mknod -> %d\t(%s, %d, %d)\n", curproc->tf->eax, p[0], n[0], n[1]);
+        break;
+      case SYS_unlink:
+        argstr(0, &p[0]);
+        cprintf("unlink -> %d\t(%s)\n", curproc->tf->eax, p[0]);
+        break;
+      case SYS_link:
+        argstr(0, &p[0]);
+        argstr(0, &p[1]);
+        cprintf("link -> %d\t(%s, %s)\n", curproc->tf->eax, p[0], p[1]);
+        break;
+      case SYS_mkdir:
+        argstr(0, &p[0]);
+        cprintf("mkdir -> %d\t(%s)\n", curproc->tf->eax, p[0]);
+        break;
+      case SYS_close:
+        argint(0, &n[0]);
+        cprintf("close -> %d\t(%d)\n", curproc->tf->eax, n[0]);
+        break;
+      case SYS_date:
+        argptr(0, (void *)&r, sizeof(struct rtcdate));
+        cprintf("date -> %d\t(%p)\n", curproc->tf->eax, r);
+        break;
+    }
+    #endif
   } else {
     cprintf("%d %s: unknown sys call %d\n",
             curproc->pid, curproc->name, num);

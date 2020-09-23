@@ -16,6 +16,9 @@
 #include "file.h"
 #include "fcntl.h"
 
+// Comment out line below to toggle off system call tracing.
+#define TRACE_SYSCALL
+
 // Fetch the nth word-sized system call argument as a file descriptor
 // and return both the descriptor and the corresponding struct file.
 static int
@@ -374,7 +377,7 @@ sys_chdir(void)
   char *path;
   struct inode *ip;
   struct proc *curproc = myproc();
-  
+
   begin_op();
   if(argstr(0, &path) < 0 || (ip = namei(path)) == 0){
     end_op();
@@ -416,6 +419,10 @@ sys_exec(void)
     if(fetchstr(uarg, &argv[i]) < 0)
       return -1;
   }
+  // print path
+  #ifdef TRACE_SYSCALL
+  cprintf("path: %s ", path);
+  #endif
   return exec(path, argv);
 }
 

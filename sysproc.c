@@ -89,3 +89,19 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+// return current UTC time
+int
+sys_date(void)
+{
+  // create struct to hold syscall argument
+  struct rtcdate *r;
+
+  // fetch system call argument as pointer to struct passed by user
+  argptr(0, (void *)&r, sizeof(struct rtcdate));
+
+  // pass pointer to cmostime() to get current UTC time
+  cmostime(r);
+
+  return 0;
+}
