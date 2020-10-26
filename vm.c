@@ -322,7 +322,8 @@ copyuvm(pde_t *pgdir, uint sz)
 
   if((d = setupkvm()) == 0)
     return 0;
-  for(i = 0; i < sz; i += PGSIZE){
+  // Load program on second page instead of first.
+  for(i = PGSIZE; i < sz; i += PGSIZE){
     if((pte = walkpgdir(pgdir, (void *) i, 0)) == 0)
       panic("copyuvm: pte should exist");
     if(!(*pte & PTE_P))
@@ -385,10 +386,56 @@ copyout(pde_t *pgdir, uint va, void *p, uint len)
   return 0;
 }
 
-//PAGEBREAK!
-// Blank page.
-//PAGEBREAK!
-// Blank page.
-//PAGEBREAK!
-// Blank page.
+int
+mprotect(void *add, int len)
+{
+  struct proc *curproc = myproc();
+  int addr = (uint)add;
+  pte_t *pte;
 
+  // check if addr is page aligned and if addr points to a valid region
+  if((addr%PGSIZE) != 0 || len <= 0 || (addr+len*PGSIZE) > curproc->sz){
+    cprintf("bad\n");
+    return -1;
+  }
+
+  // for each page
+  for(uint i = addr; i < (addr+len*PGSIZE); i += PGSIZE){
+    // check if pte is valid, and if PTE_P and PTE_U is set
+    if(((pte = walkpgdir(curproc->pgdir, (void*)i, 0)) == 0) || ((*pte & PTE_P) == 0) || ((*pte & PTE_U) == 0))
+      return -1;
+    // set as only readable
+    *pte = (*pte) & (~PTE_W);
+  }
+  // update CR3 register, flush TLB
+  lcr3(V2P(curproc->pgdir));
+  return 0;
+}
+
+int
+munprotect(void *add, int len)
+{
+  struct proc *curproc = myproc();
+  int addr = (uint)add;
+  pte_t *pte;
+
+  if((addr%PGSIZE) != 0 || len <= 0 || (addr+len*PGSIZE) > curproc->sz)
+    return -1;
+
+  // for each page
+  for(uint i = addr; i < (addr+len*PGSIZE); i += PGSIZE){
+    if(((pte = walkpgdir(curproc->pgdir, (void*)i, 0)) == 0) || ((*pte & PTE_P) == 0) || ((*pte & PTE_U) == 0))
+      return -1;
+    // set as only readable
+    *pte = *pte | PTE_W;
+  }
+  lcr3(V2P(curproc->pgdir));
+  return 0;
+}
+
+//PAGEBREAK!
+// Blank page.
+//PAGEBREAK!
+// Blank page.
+//PAGEBREAK!
+// Blank page.
