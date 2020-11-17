@@ -744,10 +744,53 @@ int repair_fs(char *filename)
   dir_log[1] = 1;
 
   // test 4
-  if(test_dir_format(img_buffer, inode, dir_log, sb->ninodes, sb->inodestart)){
-    fprintf(stderr, "ERROR: directory not properly formatted.\n");
-    exit(1);
+  // for all inodes
+  for(int i = 0; i < sb->ninodes; i++, inode++){
+    if(inode->type == T_DIR){
+
+      // for all direct data block
+      for(int j = 0; j < NDIRECT; j++){
+        // skip if data block is not in use
+        if(inode->addrs[j] == 0)
+          continue;
+
+        dir_ent = (struct dirent *) (img_buffer + (inode->addrs[j] * BSIZE));
+
+        // for all directory entries in data block
+        for(int k = 0; k < (BSIZE/sizeof(struct dirent)); k++, dir_ent++){
+          // mark inode as in use in dir_log
+          if(dir_ent->inum != 0 && strcmp(dir_ent->name, ".") != 0 && strcmp(dir_ent->name, "..") != 0)
+            dir_log[dir_ent->inum]++;
+        }
+      }
+
+      // if indirect block is in use
+      if(inode->addrs[NDIRECT] != 0){
+        // calculate address of indirect block
+        indirect_block = (uint *) (img_buffer + (inode->addrs[NDIRECT] * BSIZE));
+
+        // for all indirect data blocks
+        for(int j = 0; j < NINDIRECT; j++, indirect_block++){
+          // skip if data block is not in use
+          if(*indirect_block == 0)
+            continue;
+
+          // initialize dir_ent as first directory entry in data block
+          dir_ent = (struct dirent *) (img_buffer + (*indirect_block * BSIZE));
+
+          // for all directory entries in data block
+          for(int k = 0; k < (BSIZE/sizeof(struct dirent)); k++, dir_ent++){
+            // mark inode as in use in dir_log
+            if(dir_ent->inum != 0 && strcmp(dir_ent->name, ".") != 0 && strcmp(dir_ent->name, "..") != 0)
+              dir_log[dir_ent->inum]++;
+          }
+        }
+      }
+    }
   }
+
+  // reset inodes
+  inode = (struct dinode *) (img_buffer + (sb->inodestart * BSIZE));
 
   // for all inodes
   for(int i = 0; i < sb->ninodes; i++, inode++){
@@ -760,15 +803,17 @@ int repair_fs(char *filename)
 
         // for all directory entries in data block
         for(int k = 0; k < (BSIZE/sizeof(struct dirent)); k++, dir_ent++){
+          printf("%d\n", dir_ent->inum);
           // find a empty directory entry to create new directory entry
           if(dir_ent->inum == 0){
             flag = 1;
             // set inum of new directory entry to be lost inode
             dir_ent->inum = i;
             // placeholder name
-            dir_ent->name[0] = 76;
+            sprintf(dir_ent->name, "%s%d", "File_", i);
             // set bit in bitmap to be 1 if 0
             if(((*(bitmap + lost_found->addrs[j]/8)) & (bitmask[lost_found->addrs[j]%8])) >> (lost_found->addrs[j]%8) == 0){
+              // format bitmap byte appropriately
               if(lost_found->addrs[j] % 8 == 0)
                 *(bitmap + lost_found->addrs[j]/8) = *(bitmap + lost_found->addrs[j]/8) | (1 << (lost_found->addrs[j]%8));
               else{
@@ -803,7 +848,7 @@ int repair_fs(char *filename)
             if(dir_ent->inum == 0){
               flag = 1;
               dir_ent->inum = i;
-              dir_ent->name[0] = 76;
+              sprintf(dir_ent->name, "%s%d", "File_", i);
               if(((*(bitmap + *indirect_block/8)) & (bitmask[*indirect_block%8])) >> (*indirect_block%8) == 0){
                 if(*indirect_block % 8 == 0)
                   *(bitmap + *indirect_block/8) = *(bitmap + *indirect_block/8) | (1 << (*indirect_block%8));
@@ -819,7 +864,6 @@ int repair_fs(char *filename)
             break;
         }
       }
-
       if(flag == 0){
         fprintf(stderr, "ERROR: lost_found directory is full.\n");
         exit(1);
