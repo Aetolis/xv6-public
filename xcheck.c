@@ -858,7 +858,5 @@ int main(int argc, char **argv)
     xcheck(argv[1]);
   }
 
-  printf("We gucci\n");
-
   return 0;
 }
