@@ -47,10 +47,18 @@ sys_sbrk(void)
 {
   int addr;
   int n;
+  struct proc *curproc = myproc();
 
   if(argint(0, &n) < 0)
     return -1;
-  addr = myproc()->sz;
+  addr = curproc->sz;
+
+  // check if gap between heap and stack is being maintained
+  if(addr+n >= (KERNBASE - ((curproc->stack_sz+5)*PGSIZE))){
+    cprintf("Error: Heap cannot grow into gap pages.\n");
+    return -1;
+  }
+
   if(growproc(n) < 0)
     return -1;
   return addr;

@@ -77,6 +77,32 @@ trap(struct trapframe *tf)
             cpuid(), tf->cs, tf->eip);
     lapiceoi();
     break;
+  // add case for page fault in trap handler
+  case T_PGFLT:
+  {
+    struct proc *curproc = myproc();
+    // record page fault linear address saved in CR2 control register
+    uint pgflt_addr = rcr2();
+
+    // if pgflt occurred on page right below the "top" of the stack
+    // also check if gap between heap and stack is being maintained
+    if(pgflt_addr >= (KERNBASE - ((curproc->stack_sz+1)*PGSIZE)) && pgflt_addr >= (curproc->sz+PGSIZE*5)){
+      // grow stack by one page
+      if(allocuvm(curproc->pgdir, PGROUNDDOWN(pgflt_addr), PGROUNDDOWN(pgflt_addr)+12) == 0){
+        // kill process on fail
+        cprintf("pid %d %s: trap %d err %d on cpu %d "
+                "eip 0x%x addr 0x%x--kill proc\n",
+                myproc()->pid, myproc()->name, tf->trapno,
+                tf->err, cpuid(), tf->eip, rcr2());
+        myproc()->killed = 1;
+        break;
+      }
+      curproc->stack_sz++;
+      // print out new stack size when it is increased
+      cprintf("Stack size: %d\n", curproc->stack_sz);
+      break;
+    }
+  }
 
   //PAGEBREAK: 13
   default:
